@@ -22,10 +22,24 @@ export default function App(){
     setMotos([...motos, nm])
   }
 
+  const removeMoto = (id)=>{
+    if(window.confirm('🗑️ Rimuovere questa moto? Verranno cancellate anche TUTTE le spese e le scadenze collegate. Azione irreversibile.')){
+      setMotos(motos.filter(x=>x.id!==id))
+      setSpese(spese.filter(x=>x.moto_id!==id))
+      setScadenze(scadenze.filter(x=>x.moto_id!==id))
+      if(selectedMoto?.id===id){ setSelectedMoto(null); setView('garage') }
+    }
+  }
+
+  const removeSpesa = (id)=>{
+    if(window.confirm('🗑️ Rimuovere questa spesa?')){
+      setSpese(spese.filter(x=>x.id!==id))
+    }
+  }
+
   const addSpesa = (s)=>{
     const ns = {...s, id: Date.now().toString(), data: new Date().toISOString()}
     setSpese([...spese, ns])
-    // aggiorna km moto
     if(s.km_moto){
       setMotos(motos.map(m=> m.id===s.moto_id ? {...m, km_attuali: Math.max(m.km_attuali||0, s.km_moto)} : m))
     }
@@ -45,9 +59,9 @@ export default function App(){
       <h1 style={{fontSize:28,fontWeight:800}}>🏍️ Moto Diario</h1>
       <p style={{opacity:0.7}}>Quanto ti costa davvero andare in moto?</p>
 
-      {view==='garage' && <GarageView motos={motos} onAdd={addMoto} onSelect={(m)=>{setSelectedMoto(m); setView('dashboard')}} calcEuroKm={calcEuroKm} spese={spese} />}
+      {view==='garage' && <GarageView motos={motos} onAdd={addMoto} onSelect={(m)=>{setSelectedMoto(m); setView('dashboard')}} calcEuroKm={calcEuroKm} spese={spese} onRemove={removeMoto} />}
 
-      {view==='dashboard' && selectedMoto && <Dashboard moto={selectedMoto} spese={motoSpese(selectedMoto.id)} scadenze={scadenze.filter(s=>s.moto_id===selectedMoto.id)} onBack={()=>setView('garage')} onAddSpesa={()=>setView('addSpesa')} calcEuroKm={calcEuroKm} onExport={()=>exportPDF(selectedMoto, motoSpese(selectedMoto.id))} />}
+      {view==='dashboard' && selectedMoto && <Dashboard moto={selectedMoto} spese={motoSpese(selectedMoto.id)} scadenze={scadenze.filter(s=>s.moto_id===selectedMoto.id)} onBack={()=>setView('garage')} onAddSpesa={()=>setView('addSpesa')} calcEuroKm={calcEuroKm} onExport={()=>exportPDF(selectedMoto, motoSpese(selectedMoto.id))} onRemoveMoto={removeMoto} onRemoveSpesa={removeSpesa} />}
 
       {view==='addSpesa' && selectedMoto && <AddSpesaView moto={selectedMoto} onSave={(s)=>{addSpesa(s); setView('dashboard')}} onCancel={()=>setView('dashboard')} />}
 
@@ -60,18 +74,21 @@ export default function App(){
   )
 }
 
-function GarageView({motos, onAdd, onSelect, calcEuroKm, spese}){
+function GarageView({motos, onAdd, onSelect, calcEuroKm, spese, onRemove}){
   const [form,setForm]=useState({nome:'',marca:'Yamaha',modello:'',km_attuali:0})
   const [showForm,setShowForm]=useState(false)
   return (
     <div>
       {motos.length===0 && <div className="card" style={{textAlign:'center',padding:32}}><p>🏍️ Nessuna moto nel garage</p><p style={{fontSize:14,opacity:0.6}}>Aggiungi la tua prima moto per iniziare a tracciare costi e consumi</p></div>}
       {motos.map(m=>(
-        <div key={m.id} className="card" onClick={()=>onSelect(m)} style={{cursor:'pointer'}}>
-          <div style={{display:'flex',justifyContent:'space-between'}}>
-            <div><strong style={{fontSize:18}}>{m.nome}</strong><br/><span style={{opacity:0.6}}>{m.marca} {m.modello} - {m.km_attuali} km</span></div>
-            <div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:800, color:'#f97316'}}>€{calcEuroKm(m.id)}/km</div><div style={{fontSize:12,opacity:0.6}}>{spese.filter(s=>s.moto_id===m.id).length} spese</div></div>
+        <div key={m.id} className="card" style={{position:'relative', paddingTop:32}}>
+          <div onClick={()=>onSelect(m)} style={{cursor:'pointer'}}>
+            <div style={{display:'flex',justifyContent:'space-between'}}>
+              <div><strong style={{fontSize:18}}>{m.nome}</strong><br/><span style={{opacity:0.6}}>{m.marca} {m.modello} - {m.km_attuali} km</span></div>
+              <div style={{textAlign:'right'}}><div style={{fontSize:20,fontWeight:800, color:'#f97316'}}>€{calcEuroKm(m.id)}/km</div><div style={{fontSize:12,opacity:0.6}}>{spese.filter(s=>s.moto_id===m.id).length} spese</div></div>
+            </div>
           </div>
+          <button onClick={(e)=>{e.stopPropagation(); onRemove(m.id)}} style={{position:'absolute',top:8,right:8,background:'#ef4444',border:0,color:'white',borderRadius:8,padding:'4px 8px',fontSize:12,fontWeight:700}}>🗑️ Rimuovi</button>
         </div>
       ))}
       {!showForm ? <button className="btn" onClick={()=>setShowForm(true)}>+ Aggiungi Moto</button> :
@@ -87,7 +104,7 @@ function GarageView({motos, onAdd, onSelect, calcEuroKm, spese}){
   )
 }
 
-function Dashboard({moto, spese, scadenze, onBack, onAddSpesa, calcEuroKm, onExport}){
+function Dashboard({moto, spese, scadenze, onBack, onAddSpesa, calcEuroKm, onExport, onRemoveMoto, onRemoveSpesa}){
   const totaleAnno = spese.filter(s=> new Date(s.data).getFullYear()===new Date().getFullYear()).reduce((a,b)=>a+Number(b.euro),0)
   const prossima = scadenze.sort((a,b)=> new Date(a.data_scadenza)-new Date(b.data_scadenza))[0]
   return (
@@ -102,11 +119,15 @@ function Dashboard({moto, spese, scadenze, onBack, onAddSpesa, calcEuroKm, onExp
       </div>
       <button className="btn" onClick={onAddSpesa} style={{marginTop:12}}>+ Aggiungi Rifornimento / Spesa</button>
       <button className="btn" onClick={onExport} style={{marginTop:8,background:'#334155'}}>📄 Esporta PDF Annuale</button>
-      <h3 style={{marginTop:24}}>Ultime spese</h3>
+      <button className="btn" onClick={()=>onRemoveMoto(moto.id)} style={{marginTop:12,background:'#ef4444'}}>🗑️ Rimuovi Moto dal Garage</button>
+      <h3 style={{marginTop:24}}>Ultime spese - tap 🗑️ per cancellare</h3>
       {spese.slice(-10).reverse().map(s=>(
-        <div key={s.id} className="card" style={{display:'flex',justifyContent:'space-between'}}>
+        <div key={s.id} className="card" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <div><strong>{s.tipo}</strong><br/><small>{new Date(s.data).toLocaleDateString()} - {s.km_moto}km {s.litri? `- ${s.kml||''} km/l`:''}</small></div>
-          <div style={{fontWeight:800}}>{s.euro}€</div>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{fontWeight:800}}>{s.euro}€</div>
+            <button onClick={()=>onRemoveSpesa(s.id)} style={{background:'#ef4444',border:0,color:'white',borderRadius:6,padding:'4px 8px',fontSize:12}}>🗑️</button>
+          </div>
         </div>
       ))}
     </div>
@@ -116,7 +137,6 @@ function Dashboard({moto, spese, scadenze, onBack, onAddSpesa, calcEuroKm, onExp
 function AddSpesaView({moto, onSave, onCancel}){
   const [tipo,setTipo]=useState('rifornimento')
   const [form,setForm]=useState({km_moto:moto.km_attuali, euro:'', litri:'', note:'', officina:''})
-  const [kml,setKml]=useState(0)
 
   const handleSave=()=>{
     const km = Number(form.km_moto)
@@ -144,7 +164,6 @@ function AddSpesaView({moto, onSave, onCancel}){
         {tipo==='rifornimento' && <>
           <label>Litri</label>
           <input className="input" type="number" placeholder="es. 15.2" value={form.litri} onChange={e=>setForm({...form,litri:e.target.value})} />
-          <p style={{fontSize:12,opacity:0.6}}>💡 Trucco: scatta foto allo scontrino e inserisci i numeri a mano per ora. OCR automatico arriva nella v2 con ML Kit.</p>
         </>}
         <label>Officina / Note</label>
         <input className="input" placeholder="es. Motul, gommista Rossi" value={form.officina} onChange={e=>setForm({...form,officina:e.target.value})} />
